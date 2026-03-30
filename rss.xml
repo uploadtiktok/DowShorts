@@ -1,0 +1,29 @@
+<?xml version="1.0" ?>
+<rss version="2.0">
+  <channel>
+    <title>My YouTube Shorts Feed</title>
+    <link>https://github.com/uploadtiktok/DowShorts</link>
+    <description>Latest downloaded shorts</description>
+    <item>
+      <title>ما الرد على من ينشر صورا قديمة للتشهير</title>
+      <link>https://raw.githubusercontent.com/uploadtiktok/DowShorts/main/shorts/ما الرد على من ينشر صورا قديمة للتشهير.mp4</link>
+      <pubDate>Mon, 30 Mar 2026 16:00:43 +0000</pubDate>
+      <enclosure url="https://raw.githubusercontent.com/uploadtiktok/DowShorts/main/shorts/ما الرد على من ينشر صورا قديمة للتشهير.mp4" type="video/mp4"/>
+      <guid isPermaLink="false">https://raw.githubusercontent.com/uploadtiktok/DowShorts/main/shorts/ما الرد على من ينشر صورا قديمة للتشهير.mp4</guid>
+    </item>
+    <item>
+      <title>هل تجب الزكاة في المال المدخر لعدة أشهر</title>
+      <link>https://raw.githubusercontent.com/uploadtiktok/DowShorts/main/shorts/هل تجب الزكاة في المال المدخر لعدة أشهر.mp4</link>
+      <pubDate>Mon, 30 Mar 2026 16:00:43 +0000</pubDate>
+      <enclosure url="https://raw.githubusercontent.com/uploadtiktok/DowShorts/main/shorts/هل تجب الزكاة في المال المدخر لعدة أشهر.mp4" type="video/mp4"/>
+      <guid isPermaLink="false">https://raw.githubusercontent.com/uploadtiktok/DowShorts/main/shorts/هل تجب الزكاة في المال المدخر لعدة أشهر.mp4</guid>
+    </item>
+    <item>
+      <title>ما حكم قراءة القرآن جماعة بصوت واحد</title>
+      <link>https://raw.githubusercontent.com/uploadtiktok/DowShorts/main/shorts/ما حكم قراءة القرآن جماعة بصوت واحد.mp4</link>
+      <pubDate>Mon, 30 Mar 2026 16:00:43 +0000</pubDate>
+      <enclosure url="https://raw.githubusercontent.com/uploadtiktok/DowShorts/main/shorts/ما حكم قراءة القرآن جماعة بصوت واحد.mp4" type="video/mp4"/>
+      <guid isPermaLink="false">https://raw.githubusercontent.com/uploadtiktok/DowShorts/main/shorts/ما حكم قراءة القرآن جماعة بصوت واحد.mp4</guid>
+    </item>
+  </channel>
+</rss>

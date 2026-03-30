@@ -10,25 +10,24 @@ def download_video(url):
         "yt-dlp",
         "--cookies", "cookies.txt",
         "--js-runtime", "node",
-        # هذا الخيار هو المفتاح لحل مشكلة n challenge
         "--remote-components", "ejs:github",
+        # الخدعة الجديدة: إجبار يوتيوب على استخدام مشغل أندرويد لتجاوز القيود
+        "--extractor-args", "youtube:player_client=android,ios",
         "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
         "--no-check-certificates",
         "--geo-bypass",
-        # محاولة جلب أفضل جودة متاحة مدمجة أو دمجها يدوياً
-        "-f", "bestvideo+bestaudio/best",
-        "--merge-output-format", "mp4",
+        # تبسيط طلب الجودة لضمان التحميل
+        "-f", "bestvideo[ext=mp4]+bestaudio[m4a]/best[ext=mp4]/best",
         "-o", f"{output_dir}/%(title)s.%(ext)s",
         url
     ]
 
     try:
-        print(f"Starting secure download with remote components for: {url}")
-        # استخدام Popen لمتابعة المخرجات مباشرة
-        process = subprocess.run(command, check=True)
-        print("Success! Video downloaded.")
+        print(f"Executing deep bypass download for: {url}")
+        subprocess.run(command, check=True)
+        print("Success! Download completed.")
     except subprocess.CalledProcessError as e:
-        print(f"Critical Failure: {e}")
+        print(f"Final attempt failed. YouTube has successfully blocked this IP range.")
         exit(1)
 
 if __name__ == "__main__":

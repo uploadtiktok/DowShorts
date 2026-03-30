@@ -1,0 +1,44 @@
+name: Download with Secure Cookies
+
+on:
+  workflow_dispatch:
+
+jobs:
+  download:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install yt-dlp
+        run: pip install yt-dlp
+
+      - name: Create Temporary Cookies File
+        # نأخذ القيمة من السيكرت ونضعها في ملف
+        run: echo "${{ secrets.YT_COOKIES }}" > cookies.txt
+
+      - name: Run Download Script
+        run: python download_short.py
+
+      - name: Shred Cookies
+        # مسح ملف الكوكيز فوراً بعد الاستخدام لزيادة الأمان
+        if: always()
+        run: rm -f cookies.txt
+
+      - name: Commit and Push
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          if [ -d "shorts" ] && [ "$(ls -A shorts)" ]; then
+            git add shorts/
+            git commit -m "Video downloaded using secure session"
+            git push
+          fi

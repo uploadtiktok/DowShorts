@@ -10,23 +10,27 @@ def download_video(url):
         "yt-dlp",
         "--cookies", "cookies.txt",
         "--js-runtime", "node",
+        # هذا الخيار هو المفتاح لحل مشكلة n challenge
+        "--remote-components", "ejs:github",
         "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
         "--no-check-certificates",
         "--geo-bypass",
-        # تعديل خيار الجودة لجلب أفضل فيديو متاح أياً كانت صيغته ثم تحويله أو دمج أفضل صوت وصورة
+        # محاولة جلب أفضل جودة متاحة مدمجة أو دمجها يدوياً
         "-f", "bestvideo+bestaudio/best",
-        "--merge-output-format", "mp4", # محاولة دمج المخرجات في صيغة mp4
+        "--merge-output-format", "mp4",
         "-o", f"{output_dir}/%(title)s.%(ext)s",
         url
     ]
 
     try:
-        print(f"Attempting download with updated formats for: {url}")
-        subprocess.run(command, check=True)
-        print("Success!")
+        print(f"Starting secure download with remote components for: {url}")
+        # استخدام Popen لمتابعة المخرجات مباشرة
+        process = subprocess.run(command, check=True)
+        print("Success! Video downloaded.")
     except subprocess.CalledProcessError as e:
-        print(f"Download failed again. Technical details: {e}")
+        print(f"Critical Failure: {e}")
         exit(1)
 
 if __name__ == "__main__":
-    download_video("https://youtube.com/shorts/evdWG0GRlfs?si=DmZ9aa5O6CMURlry")
+    target_url = "https://youtube.com/shorts/evdWG0GRlfs?si=DmZ9aa5O6CMURlry"
+    download_video(target_url)

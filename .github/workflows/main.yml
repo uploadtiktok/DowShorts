@@ -1,16 +1,18 @@
-name: YouTube HQ Downloader
+name: Auto YouTube Shorts Downloader
 
 on:
-  workflow_dispatch:
+  workflow_dispatch: # تشغيل يدوي
+  schedule:
+    - cron: '0 */6 * * *' # فحص تلقائي كل 6 ساعات (يمكنك تغييره)
 
 jobs:
-  build:
+  download_and_push:
     runs-on: ubuntu-latest
     permissions:
       contents: write
 
     steps:
-      - name: Checkout Code
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
       - name: Setup Node.js
@@ -18,29 +20,38 @@ jobs:
         with:
           node-version: 18
 
-      - name: Install Tools
+      - name: Install FFmpeg
+        # تثبيت مباشر لـ FFmpeg لدمج الصوت والصورة
+        run: sudo apt-get install -y ffmpeg
+
+      - name: Install Python Dependencies
         run: |
-          sudo apt-get install -y ffmpeg
-          pip install yt-dlp
+          pip install yt-dlp requests
 
       - name: Create Cookies File
+        # تأكد من إضافة الكوكيز في Secrets باسم YT_COOKIES
         run: echo "${{ secrets.YT_COOKIES }}" > cookies.txt
 
-      - name: Run Python Script
-        run: python download_short.py
+      - name: Run Downloader Script
+        # تشغيل ملف البايثون الذي أعددناه
+        run: python main.py
 
-      - name: Clean Temporary Files
+      - name: Cleanup Sensitive Data
         if: always()
         run: rm -f cookies.txt
 
-      - name: Upload to Repository
+      - name: Commit and Push Changes
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          if [ -d "shorts" ] && [ "$(ls -A shorts)" ]; then
-            git add shorts/
-            git commit -m "Download new short: $(date)"
-            git push
+          
+          # إضافة المجلد وملف التتبع (JSON)
+          git add shorts/ last_processed_ids.json
+          
+          # التحقق إذا كانت هناك ملفات جديدة فعلاً قبل الـ commit
+          if git diff --staged --quiet; then
+            echo "No new videos or changes to commit."
           else
-            echo "No files to upload."
+            git commit -m "Download new shorts and update tracking index"
+            git push
           fi

@@ -1,38 +1,33 @@
 import os
 import json
-import base64
 import subprocess
 import requests
 from pathlib import Path
-from datetime import datetime
 from xml.etree import ElementTree as ET
 
 # ========== الإعدادات ==========
-TOKEN = os.environ.get('PAT_TOKEN', os.environ.get('GITHUB_TOKEN', ''))
-REPO = os.environ.get('GITHUB_REPO', 'uploadtiktok/TikTok')
-BRANCH = os.environ.get('GITHUB_BRANCH', 'main')
-# رابط خلاصة القناة (بجاد الأثري)
 YT_RSS_URL = "https://www.youtube.com/feeds/videos.xml?channel_id=UCLSEQ0cuNz_vJ_H3uXB1R7w"
-
-BATCH_SIZE = 3 # تحميل احدث 3 فيديوهات جديدة فقط
-VIDEO_FOLDER = "shorts" # المجلد الذي طلبت التحميل فيه
-LAST_ID_FILE = "last_processed_ids.json"
+VIDEO_FOLDER = "shorts"
+LAST_ID_FILE = "last_processed_id.json"
+BATCH_SIZE = 3 # أقصى عدد للفيديوهات الجديدة في كل تشغيل
 # ==============================
 
-def load_processed_ids():
+def load_last_id():
+    """تحميل آخر معرف فيديو تم معالجته بنجاح"""
     if os.path.exists(LAST_ID_FILE):
         try:
             with open(LAST_ID_FILE, 'r') as f:
-                return json.load(f).get("ids", [])
-        except: return []
-    return []
+                return json.load(f).get("last_id", None)
+        except: return None
+    return None
 
-def save_processed_ids(ids_list):
+def save_last_id(video_id):
+    """حفظ المعرف الجديد ليكون المرجع في التشغيل القادم"""
     with open(LAST_ID_FILE, 'w') as f:
-        json.dump({"ids": ids_list[-50:]}, f)
+        json.dump({"last_id": video_id}, f)
 
 def fetch_youtube_shorts():
-    print(f"📡 جاري فحص خلاصة اليوتيوب...")
+    """جلب المقاطع من الخلاصة مع التأكد أنها Shorts"""
     try:
         response = requests.get(YT_RSS_URL)
         response.raise_for_status()
@@ -45,7 +40,6 @@ def fetch_youtube_shorts():
             title = entry.find('atom:title', ns).text
             link = entry.find('atom:link', ns).attrib['href']
             
-            # التأكد أن المقطع من نوع Shorts
             if "/shorts/" in link:
                 entries.append({'id': v_id, 'title': title, 'link': link})
         return entries
@@ -54,10 +48,10 @@ def fetch_youtube_shorts():
         return []
 
 def download_video(url, title):
+    """التحميل باستخدام yt-dlp بالمجلد المحدد"""
     if not os.path.exists(VIDEO_FOLDER):
         os.makedirs(VIDEO_FOLDER)
 
-    # استخدام نفس الأوامر التي نجحت معك سابقاً
     command = [
         "yt-dlp",
         "--cookies", "cookies.txt",
@@ -74,34 +68,45 @@ def download_video(url, title):
         print(f"📥 جاري تحميل: {title}")
         subprocess.run(command, check=True)
         return True
-    except subprocess.CalledProcessError:
-        print(f"⚠️ فشل تحميل المقطع: {title}")
+    except:
         return False
 
 def main():
-    processed_ids = load_processed_ids()
+    last_saved_id = load_last_id()
     all_shorts = fetch_youtube_shorts()
     
-    # تصفية المقاطع الجديدة فقط (التي لم يسبق تحميلها)
-    new_shorts = [s for s in all_shorts if s['id'] not in processed_ids]
-    
-    if not new_shorts:
-        print("📭 لا توجد مقاطع Shorts جديدة.")
+    if not all_shorts:
+        print("📭 الخلاصة فارغة.")
         return
 
-    # أخذ أحدث 3 فيديوهات (تكون في أعلى الخلاصة عادةً)
-    to_process = new_shorts[:BATCH_SIZE]
-    print(f"🚀 تم العثور على {len(to_process)} مقاطع جديدة.")
+    new_to_download = []
+    
+    # بما أن الأحدث في الأعلى، نبحث حتى نصل للـ ID القديم
+    for item in all_shorts:
+        if item['id'] == last_saved_id:
+            break # توقف هنا، كل ما هو أسفل تم معالجته سابقاً
+        new_to_download.append(item)
+    
+    if not new_to_download:
+        print("✨ لا توجد فيديوهات أحدث من آخر فيديو معالج.")
+        return
 
-    downloaded_ids = []
-    for item in to_process:
-        success = download_video(item['link'], item['title'])
-        if success:
-            downloaded_ids.append(item['id'])
+    # معالجة أحدث 3 فيديوهات فقط من القائمة الجديدة
+    to_process = new_to_download[:BATCH_SIZE]
+    print(f"🚀 تم العثور على {len(to_process)} مقطع جديد.")
 
-    if downloaded_ids:
-        save_processed_ids(processed_ids + downloaded_ids)
-        print(f"✅ تم الانتهاء من معالجة {len(downloaded_ids)} فيديو بنجاح.")
+    successfully_downloaded_ids = []
+    
+    # التحميل (نبدأ من الأقدم في القائمة الجديدة للأحدث ليكون الـ ID الأخير هو الأحدث فعلياً)
+    for item in reversed(to_process):
+        if download_video(item['link'], item['title']):
+            successfully_downloaded_ids.append(item['id'])
+
+    # حفظ آخر ID تم تحميله بنجاح ليكون المرجع القادم
+    if successfully_downloaded_ids:
+        # آخر عنصر في القائمة (بسبب reversed) هو الأحدث زمنياً
+        save_last_id(successfully_downloaded_ids[-1])
+        print(f"✅ تم تحديث المرجع إلى آخر فيديو محمل: {successfully_downloaded_ids[-1]}")
 
 if __name__ == "__main__":
     main()

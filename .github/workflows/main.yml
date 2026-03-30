@@ -1,58 +1,55 @@
-name: Auto YouTube Shorts & RSS Sync
+name: Auto Shorts & RSS Sync
 
 on:
-  workflow_dispatch: # للتشغيل اليدوي من تبويب Actions
+  workflow_dispatch:
   schedule:
-    - cron: '0 */6 * * *' # تشغيل تلقائي كل 6 ساعات لفحص الجديد
+    - cron: '0 */6 * * *'
 
 jobs:
-  sync_process:
+  sync:
     runs-on: ubuntu-latest
     permissions:
       contents: write
 
     steps:
-      - name: Checkout Repository
+      - name: Checkout
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 1
 
-      - name: Setup Node.js
+      - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: 18
 
-      - name: Install FFmpeg
-        run: sudo apt-get install -y ffmpeg
-
-      - name: Install Python Dependencies
+      - name: Tools
         run: |
+          sudo apt-get install -y ffmpeg
           pip install yt-dlp requests
 
-      - name: Create Cookies File
-        # تأكد من إضافة الكوكيز في Secrets المستودع باسم YT_COOKIES
+      - name: Cookies
         run: echo "${{ secrets.YT_COOKIES }}" > cookies.txt
 
-      - name: Run Main Script
-        # سيقوم بمعالجة 3 مقاطع وتحديث rss.xml و last_processed_id.json
+      - name: Run
         run: python main.py
 
-      - name: Cleanup Sensitive Data
+      - name: Cleanup
         if: always()
         run: rm -f cookies.txt
 
-      - name: Commit and Push Changes
+      - name: Push
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           
-          # إضافة المجلد، ملف التتبع، وملف الـ RSS الجديد
-          git add shorts/ last_processed_id.json rss.xml
+          # التأكد من وجود المجلد والملفات لتجنب الخطأ 128
+          mkdir -p shorts
+          git add shorts/
           
-          # التحقق من وجود تغييرات قبل الإرسال
+          [ -f "last_processed_id.json" ] && git add last_processed_id.json
+          [ -f "rss.xml" ] && git add rss.xml
+          
           if git diff --staged --quiet; then
-            echo "لا توجد تحديثات جديدة حالياً."
+            echo "No changes to commit."
           else
-            git commit -m "Sync: 3 new shorts, update RSS and tracking ID"
+            git commit -m "Sync: 3 shorts & RSS update"
             git push
           fi

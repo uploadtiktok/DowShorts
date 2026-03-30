@@ -3,7 +3,7 @@ name: Auto Shorts & RSS Sync
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 0 * * *'
+    - cron: '0 */6 * * *'
 
 jobs:
   sync:
@@ -25,31 +25,21 @@ jobs:
           sudo apt-get install -y ffmpeg
           pip install yt-dlp requests
 
-      - name: Cookies
-        run: echo "${{ secrets.YT_COOKIES }}" > cookies.txt
+      - name: Run Script
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          echo "${{ secrets.YT_COOKIES }}" > cookies.txt
+          python main.py
+          rm -f cookies.txt
 
-      - name: Run
-        run: python main.py
-
-      - name: Cleanup
-        if: always()
-        run: rm -f cookies.txt
-
-      - name: Push
+      - name: Push Changes
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          
-          # التأكد من وجود المجلد والملفات لتجنب الخطأ 128
           mkdir -p shorts
           git add shorts/
-          
           [ -f "last_processed_id.json" ] && git add last_processed_id.json
           [ -f "rss.xml" ] && git add rss.xml
-          
-          if git diff --staged --quiet; then
-            echo "No changes to commit."
-          else
-            git commit -m "Sync: 3 shorts & RSS update"
-            git push
-          fi
+          git diff --staged --quiet || (git commit -m "Sync & Cleanup" && git push)

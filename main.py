@@ -9,11 +9,10 @@ from xml.etree import ElementTree as ET
 YT_RSS_URL = "https://www.youtube.com/feeds/videos.xml?channel_id=UCLSEQ0cuNz_vJ_H3uXB1R7w"
 VIDEO_FOLDER = "shorts"
 LAST_ID_FILE = "last_processed_id.json"
-BATCH_SIZE = 3 # أقصى عدد للفيديوهات الجديدة في كل تشغيل
+BATCH_SIZE = 3 # سيعالج 3 فقط في كل مرة
 # ==============================
 
 def load_last_id():
-    """تحميل آخر معرف فيديو تم معالجته بنجاح"""
     if os.path.exists(LAST_ID_FILE):
         try:
             with open(LAST_ID_FILE, 'r') as f:
@@ -22,12 +21,10 @@ def load_last_id():
     return None
 
 def save_last_id(video_id):
-    """حفظ المعرف الجديد ليكون المرجع في التشغيل القادم"""
     with open(LAST_ID_FILE, 'w') as f:
         json.dump({"last_id": video_id}, f)
 
 def fetch_youtube_shorts():
-    """جلب المقاطع من الخلاصة مع التأكد أنها Shorts"""
     try:
         response = requests.get(YT_RSS_URL)
         response.raise_for_status()
@@ -48,7 +45,6 @@ def fetch_youtube_shorts():
         return []
 
 def download_video(url, title):
-    """التحميل باستخدام yt-dlp بالمجلد المحدد"""
     if not os.path.exists(VIDEO_FOLDER):
         os.makedirs(VIDEO_FOLDER)
 
@@ -79,34 +75,37 @@ def main():
         print("📭 الخلاصة فارغة.")
         return
 
-    new_to_download = []
-    
-    # بما أن الأحدث في الأعلى، نبحث حتى نصل للـ ID القديم
+    # استخراج كافة المقاطع الجديدة (التي لم تعالج بعد)
+    new_candidates = []
     for item in all_shorts:
         if item['id'] == last_saved_id:
-            break # توقف هنا، كل ما هو أسفل تم معالجته سابقاً
-        new_to_download.append(item)
+            break
+        new_candidates.append(item)
     
-    if not new_to_download:
-        print("✨ لا توجد فيديوهات أحدث من آخر فيديو معالج.")
+    if not new_candidates:
+        print("✨ لا توجد فيديوهات جديدة.")
         return
 
-    # معالجة أحدث 3 فيديوهات فقط من القائمة الجديدة
-    to_process = new_to_download[:BATCH_SIZE]
-    print(f"🚀 تم العثور على {len(to_process)} مقطع جديد.")
-
-    successfully_downloaded_ids = []
+    # بما أن القائمة مرتبة من الأحدث للأقدم، سنعكسها لنبدأ من الأقدم (الأقرب للـ ID القديم)
+    # ونأخذ أول 3 فقط (Batch)
+    new_candidates.reverse() 
+    to_process = new_candidates[:BATCH_SIZE]
     
-    # التحميل (نبدأ من الأقدم في القائمة الجديدة للأحدث ليكون الـ ID الأخير هو الأحدث فعلياً)
-    for item in reversed(to_process):
-        if download_video(item['link'], item['title']):
-            successfully_downloaded_ids.append(item['id'])
+    print(f"🚀 تم العثور على {len(new_candidates)} مقطع جديد إجمالاً.")
+    print(f"📦 سيتم معالجة {len(to_process)} مقاطع في هذه الدفعة.")
 
-    # حفظ آخر ID تم تحميله بنجاح ليكون المرجع القادم
-    if successfully_downloaded_ids:
-        # آخر عنصر في القائمة (بسبب reversed) هو الأحدث زمنياً
-        save_last_id(successfully_downloaded_ids[-1])
-        print(f"✅ تم تحديث المرجع إلى آخر فيديو محمل: {successfully_downloaded_ids[-1]}")
+    last_successful_id = None
+    for item in to_process:
+        if download_video(item['link'], item['title']):
+            last_successful_id = item['id']
+        else:
+            # إذا فشل مقطع، نتوقف عند آخر مقطع نجح لنحاول مرة أخرى لاحقاً
+            break
+
+    # تحديث المرجع بآخر مقطع تم تحميله فعلياً في هذه الدفعة
+    if last_successful_id:
+        save_last_id(last_successful_id)
+        print(f"✅ تم تحديث المرجع إلى: {last_successful_id}")
 
 if __name__ == "__main__":
     main()

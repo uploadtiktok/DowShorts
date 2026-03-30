@@ -1,12 +1,12 @@
-name: Auto YouTube Shorts Downloader
+name: Auto YouTube Shorts Sync
 
 on:
-  workflow_dispatch: # تشغيل يدوي
+  workflow_dispatch: # تشغيل يدوي من تبويب Actions
   schedule:
-    - cron: '0 */6 * * *' # فحص تلقائي كل 6 ساعات (يمكنك تغييره)
+    - cron: '0 */6 * * *' # تشغيل تلقائي كل 6 ساعات لفحص المقاطع الجديدة
 
 jobs:
-  download_and_push:
+  sync_shorts:
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -14,6 +14,8 @@ jobs:
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 1 # جلب أحدث نسخة فقط لتوفير الوقت
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -21,7 +23,7 @@ jobs:
           node-version: 18
 
       - name: Install FFmpeg
-        # تثبيت مباشر لـ FFmpeg لدمج الصوت والصورة
+        # ضروري لدمج جودة 1080p (فيديو + صوت)
         run: sudo apt-get install -y ffmpeg
 
       - name: Install Python Dependencies
@@ -29,11 +31,11 @@ jobs:
           pip install yt-dlp requests
 
       - name: Create Cookies File
-        # تأكد من إضافة الكوكيز في Secrets باسم YT_COOKIES
+        # تأكد من وضع الكوكيز في إعدادات المستودع (Settings > Secrets) باسم YT_COOKIES
         run: echo "${{ secrets.YT_COOKIES }}" > cookies.txt
 
-      - name: Run Downloader Script
-        # تشغيل ملف البايثون الذي أعددناه
+      - name: Run Sync Script
+        # سيقوم السكريبت بفحص RSS وتحميل الجديد فقط وتحديث last_processed_id.json
         run: python main.py
 
       - name: Cleanup Sensitive Data
@@ -45,13 +47,13 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           
-          # إضافة المجلد وملف التتبع (JSON)
-          git add shorts/ last_processed_ids.json
+          # إضافة المجلد وملف التتبع الفردي (آخر ID فقط)
+          git add shorts/ last_processed_id.json
           
-          # التحقق إذا كانت هناك ملفات جديدة فعلاً قبل الـ commit
+          # التحقق من وجود تغييرات (فيديوهات جديدة أو تحديث الـ ID)
           if git diff --staged --quiet; then
-            echo "No new videos or changes to commit."
+            echo "لا توجد فيديوهات جديدة أو تغييرات للمزامنة حالياً."
           else
-            git commit -m "Download new shorts and update tracking index"
+            git commit -m "Sync new shorts and update latest processed ID"
             git push
           fi

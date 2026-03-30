@@ -1,4 +1,4 @@
-name: Simple HQ Download
+name: Quick HQ Download
 
 on:
   workflow_dispatch:
@@ -13,16 +13,17 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Install Node.js # المحرك الوحيد المطلوب لفك التحدي
+      - name: Install Node
         uses: actions/setup-node@v4
         with:
           node-version: 18
 
-      - name: Install FFmpeg and yt-dlp
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y ffmpeg
-          pip install yt-dlp
+      - name: Install FFmpeg
+        # تثبيت مباشر بدون تحديث المستودعات
+        run: sudo apt-get install -y ffmpeg
+
+      - name: Install yt-dlp
+        run: pip install yt-dlp
 
       - name: Create Cookies File
         run: echo "${{ secrets.YT_COOKIES }}" > cookies.txt
@@ -30,12 +31,12 @@ jobs:
       - name: Run Download
         run: python download_short.py
 
-      - name: Push to Repository
+      - name: Push to Repo
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           if [ -d "shorts" ] && [ "$(ls -A shorts)" ]; then
             git add shorts/
-            git commit -m "Upload high quality video"
+            git commit -m "Add video"
             git push
           fi

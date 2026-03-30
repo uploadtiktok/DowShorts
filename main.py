@@ -16,7 +16,21 @@ VIDEO_FOLDER = "shorts"
 LAST_ID_FILE = "last_processed_id.json"
 BATCH_SIZE = 3 
 MAX_ITEMS = 3 
+
+# Telegram Settings
+TG_TOKEN = os.environ.get("TELEGRAM_TOKEN")
+TG_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
 # ====================================
+
+def send_telegram_msg(message):
+    if not TG_TOKEN or not TG_CHAT_ID:
+        return
+    url = f"https://api.telegram.org/bot{TG_TOKEN}/sendMessage"
+    payload = {"chat_id": TG_CHAT_ID, "text": message, "parse_mode": "HTML"}
+    try:
+        requests.post(url, json=payload, timeout=10)
+    except:
+        pass
 
 def get_local_rss_items():
     path = Path("rss.xml")
@@ -36,21 +50,15 @@ def get_local_rss_items():
     return items
 
 def cleanup_shorts_folder(keep_filenames):
-    """حذف أي ملف في مجلد shorts ليس ضمن القائمة الجديدة"""
-    print("🗑️ جاري تنظيف الفيديوهات القديمة...")
     folder = Path(VIDEO_FOLDER)
     if not folder.exists(): return
-
     for file_path in folder.glob("*.mp4"):
         if file_path.name not in keep_filenames:
             try:
                 file_path.unlink()
-                print(f"✅ تم حذف الملف القديم: {file_path.name}")
-            except Exception as e:
-                print(f"⚠️ فشل حذف {file_path.name}: {e}")
+            except: pass
 
 def update_rss_file(new_videos_data):
-    print("📡 جاري تحديث ملف rss.xml وتنظيف المجلد...")
     current_items = get_local_rss_items()
     new_items = []
     for filename, title in new_videos_data:
@@ -58,21 +66,14 @@ def update_rss_file(new_videos_data):
         pub_date = datetime.now().strftime('%a, %d %b %Y %H:%M:%S +0000')
         new_items.append({'title': title, 'link': video_url, 'pub_date': pub_date})
     
-    # دمج القوائم واختيار أحدث 3 فقط
     all_items = (new_items + current_items)[:MAX_ITEMS]
-    
-    # استخراج أسماء الملفات التي يجب الاحتفاظ بها فقط
     keep_filenames = [item['link'].split('/')[-1] for item in all_items]
-    
-    # تنفيذ عملية التنظيف الفعلي للمجلد
     cleanup_shorts_folder(keep_filenames)
     
-    # بناء ملف الـ RSS
     rss = ET.Element('rss', version='2.0')
     channel = ET.SubElement(rss, 'channel')
     ET.SubElement(channel, 'title').text = 'My YouTube Shorts Feed'
     ET.SubElement(channel, 'link').text = f"https://github.com/{REPO}"
-    ET.SubElement(channel, 'description').text = 'Latest downloaded shorts'
     
     for item in all_items:
         node = ET.SubElement(channel, 'item')
@@ -85,38 +86,8 @@ def update_rss_file(new_videos_data):
     xml_str = ET.tostring(rss, encoding='utf-8')
     pretty_xml = minidom.parseString(xml_str).toprettyxml(indent="  ")
     clean_xml = "\n".join(line for line in pretty_xml.split('\n') if line.strip())
-    
     with open("rss.xml", "w", encoding="utf-8") as f:
         f.write(clean_xml)
-
-# --- بقية الدوال (fetch, download, main) تبقى كما هي في الكود السابق ---
-
-def load_last_id():
-    if os.path.exists(LAST_ID_FILE):
-        try:
-            with open(LAST_ID_FILE, 'r') as f:
-                return json.load(f).get("last_id", None)
-        except: return None
-    return None
-
-def save_last_id(video_id):
-    with open(LAST_ID_FILE, 'w') as f:
-        json.dump({"last_id": video_id}, f)
-
-def fetch_youtube_shorts():
-    try:
-        response = requests.get(YT_RSS_URL, timeout=10)
-        root = ET.fromstring(response.content)
-        ns = {'atom': 'http://www.w3.org/2005/Atom', 'yt': 'http://www.youtube.com/xml/schemas/2015'}
-        entries = []
-        for entry in root.findall('atom:entry', ns):
-            v_id = entry.find('yt:videoId', ns).text
-            title = entry.find('atom:title', ns).text
-            link = entry.find('atom:link', ns).attrib['href']
-            if "/shorts/" in link:
-                entries.append({'id': v_id, 'title': title, 'link': link})
-        return entries
-    except: return []
 
 def download_video(url, title):
     Path(VIDEO_FOLDER).mkdir(parents=True, exist_ok=True)
@@ -130,23 +101,41 @@ def download_video(url, title):
         "--merge-output-format", "mp4", "-o", file_path, url
     ]
     try:
-        subprocess.run(command, check=True)
-        return filename if os.path.exists(file_path) else None
+        result = subprocess.run(command, capture_output=True, text=True)
+        if result.returncode == 0:
+            return filename
+        else:
+            error_msg = result.stderr
+            if "Sign in to confirm your age" in error_msg or "cookie" in error_msg.lower():
+                send_telegram_msg(f"⚠️ <b>تنبيه من DowShorts:</b>\nيبدو أن الكوكيز قد انتهت صلاحيته! يرجى تجديده فوراً.")
+            return None
     except: return None
 
 def main():
-    last_id = load_last_id()
-    all_shorts = fetch_youtube_shorts()
+    if os.path.exists(LAST_ID_FILE):
+        with open(LAST_ID_FILE, 'r') as f:
+            last_id = json.load(f).get("last_id")
+    else: last_id = None
+
+    try:
+        response = requests.get(YT_RSS_URL, timeout=10)
+        root = ET.fromstring(response.content)
+        ns = {'atom': 'http://www.w3.org/2005/Atom', 'yt': 'http://www.youtube.com/xml/schemas/2015'}
+        all_shorts = []
+        for entry in root.findall('atom:entry', ns):
+            v_id = entry.find('yt:videoId', ns).text
+            title = entry.find('atom:title', ns).text
+            link = entry.find('atom:link', ns).attrib['href']
+            if "/shorts/" in link:
+                all_shorts.append({'id': v_id, 'title': title, 'link': link})
+    except: return
+
     new_candidates = []
     for item in all_shorts:
         if item['id'] == last_id: break
         new_candidates.append(item)
     
-    if not new_candidates:
-        print("✨ لا توجد مقاطع جديدة.")
-        # حتى لو لا توجد مقاطع جديدة، قد نحتاج لتنظيف المجلد إذا تغيرت MAX_ITEMS
-        update_rss_file([]) 
-        return
+    if not new_candidates: return
 
     new_candidates.reverse()
     to_process = new_candidates[:BATCH_SIZE]
@@ -162,8 +151,10 @@ def main():
 
     if downloaded_info:
         update_rss_file(downloaded_info)
-        save_last_id(final_id)
-        print(f"✅ تم المزامنة والتنظيف بنجاح.")
+        with open(LAST_ID_FILE, 'w') as f:
+            json.dump({"last_id": final_id}, f)
+        # إرسال تقرير نجاح (اختياري)
+        send_telegram_msg(f"✅ <b>تم تحميل مقاطع جديدة:</b>\nتمت معالجة {len(downloaded_info)} فيديو بنجاح.")
 
 if __name__ == "__main__":
     main()

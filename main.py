@@ -28,7 +28,7 @@ def send_telegram_msg(message):
     url = f"https://api.telegram.org/bot{TG_TOKEN}/sendMessage"
     payload = {"chat_id": TG_CHAT_ID, "text": message, "parse_mode": "HTML"}
     try:
-        requests.post(url, json=payload, timeout=10)
+        requests.post(url, json=payload, timeout=15)
     except:
         pass
 
@@ -105,9 +105,9 @@ def download_video(url, title):
         if result.returncode == 0:
             return filename
         else:
-            error_msg = result.stderr
-            if "Sign in to confirm your age" in error_msg or "cookie" in error_msg.lower():
-                send_telegram_msg(f"⚠️ <b>تنبيه من DowShorts:</b>\nيبدو أن الكوكيز قد انتهت صلاحيته! يرجى تجديده فوراً.")
+            error_msg = result.stderr.lower()
+            if "sign in" in error_msg or "cookie" in error_msg or "forbidden" in error_msg:
+                send_telegram_msg("🔴 <b>الكوكيز متوقف</b>\nيرجى تحديث ملف cookies.txt في GitHub Secrets.")
             return None
     except: return None
 
@@ -118,7 +118,7 @@ def main():
     else: last_id = None
 
     try:
-        response = requests.get(YT_RSS_URL, timeout=10)
+        response = requests.get(YT_RSS_URL, timeout=15)
         root = ET.fromstring(response.content)
         ns = {'atom': 'http://www.w3.org/2005/Atom', 'yt': 'http://www.youtube.com/xml/schemas/2015'}
         all_shorts = []
@@ -128,14 +128,17 @@ def main():
             link = entry.find('atom:link', ns).attrib['href']
             if "/shorts/" in link:
                 all_shorts.append({'id': v_id, 'title': title, 'link': link})
-    except: return
+    except:
+        return
 
     new_candidates = []
     for item in all_shorts:
         if item['id'] == last_id: break
         new_candidates.append(item)
     
-    if not new_candidates: return
+    if not new_candidates:
+        send_telegram_msg("🟠 <b>لا يوجد مقاطع جديدة</b>")
+        return
 
     new_candidates.reverse()
     to_process = new_candidates[:BATCH_SIZE]
@@ -145,16 +148,21 @@ def main():
     for item in to_process:
         fname = download_video(item['link'], item['title'])
         if fname:
-            downloaded_info.append((fname, item['title']))
+            downloaded_info.append(item['title'])
             final_id = item['id']
-        else: break
+            # تحديث المعلومات لملف الـ RSS
+            update_rss_file([(fname, item['title'])])
+        else:
+            break
 
     if downloaded_info:
-        update_rss_file(downloaded_info)
         with open(LAST_ID_FILE, 'w') as f:
             json.dump({"last_id": final_id}, f)
-        # إرسال تقرير نجاح (اختياري)
-        send_telegram_msg(f"✅ <b>تم تحميل مقاطع جديدة:</b>\nتمت معالجة {len(downloaded_info)} فيديو بنجاح.")
+        
+        # صياغة رسالة النجاح
+        titles_list = "\n".join([f"- {t}" for t in downloaded_info])
+        report = f"🟢 <b>تم تحميل المقاطع التالية:</b>\n{titles_list}"
+        send_telegram_msg(report)
 
 if __name__ == "__main__":
     main()

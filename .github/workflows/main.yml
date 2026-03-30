@@ -1,4 +1,4 @@
-name: Simple High Quality Download
+name: Simple HQ Download
 
 on:
   workflow_dispatch:
@@ -13,7 +13,12 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Install Tools
+      - name: Install Node.js # المحرك الوحيد المطلوب لفك التحدي
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      - name: Install FFmpeg and yt-dlp
         run: |
           sudo apt-get update
           sudo apt-get install -y ffmpeg

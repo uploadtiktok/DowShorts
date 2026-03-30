@@ -7,7 +7,7 @@ from datetime import datetime
 from xml.dom import minidom
 from xml.etree import ElementTree as ET
 
-# ========== الإعدادات (تأكد من مطابقة اسم المستودع) ==========
+# ========== CONFIGURATION ==========
 REPO = "uploadtiktok/DowShorts"
 BRANCH = "main"
 YT_RSS_URL = "https://www.youtube.com/feeds/videos.xml?channel_id=UCLSEQ0cuNz_vJ_H3uXB1R7w"
@@ -15,8 +15,8 @@ YT_RSS_URL = "https://www.youtube.com/feeds/videos.xml?channel_id=UCLSEQ0cuNz_vJ
 VIDEO_FOLDER = "shorts"
 LAST_ID_FILE = "last_processed_id.json"
 BATCH_SIZE = 3 
-MAX_ITEMS = 3 # عدد العناصر في ملف rss.xml
-# ============================================================
+MAX_ITEMS = 3 
+# ====================================
 
 def get_local_rss_items():
     path = Path("rss.xml")
@@ -35,8 +35,22 @@ def get_local_rss_items():
     except: return []
     return items
 
+def cleanup_shorts_folder(keep_filenames):
+    """حذف أي ملف في مجلد shorts ليس ضمن القائمة الجديدة"""
+    print("🗑️ جاري تنظيف الفيديوهات القديمة...")
+    folder = Path(VIDEO_FOLDER)
+    if not folder.exists(): return
+
+    for file_path in folder.glob("*.mp4"):
+        if file_path.name not in keep_filenames:
+            try:
+                file_path.unlink()
+                print(f"✅ تم حذف الملف القديم: {file_path.name}")
+            except Exception as e:
+                print(f"⚠️ فشل حذف {file_path.name}: {e}")
+
 def update_rss_file(new_videos_data):
-    print("📡 جاري تحديث ملف rss.xml...")
+    print("📡 جاري تحديث ملف rss.xml وتنظيف المجلد...")
     current_items = get_local_rss_items()
     new_items = []
     for filename, title in new_videos_data:
@@ -44,8 +58,16 @@ def update_rss_file(new_videos_data):
         pub_date = datetime.now().strftime('%a, %d %b %Y %H:%M:%S +0000')
         new_items.append({'title': title, 'link': video_url, 'pub_date': pub_date})
     
+    # دمج القوائم واختيار أحدث 3 فقط
     all_items = (new_items + current_items)[:MAX_ITEMS]
     
+    # استخراج أسماء الملفات التي يجب الاحتفاظ بها فقط
+    keep_filenames = [item['link'].split('/')[-1] for item in all_items]
+    
+    # تنفيذ عملية التنظيف الفعلي للمجلد
+    cleanup_shorts_folder(keep_filenames)
+    
+    # بناء ملف الـ RSS
     rss = ET.Element('rss', version='2.0')
     channel = ET.SubElement(rss, 'channel')
     ET.SubElement(channel, 'title').text = 'My YouTube Shorts Feed'
@@ -66,6 +88,8 @@ def update_rss_file(new_videos_data):
     
     with open("rss.xml", "w", encoding="utf-8") as f:
         f.write(clean_xml)
+
+# --- بقية الدوال (fetch, download, main) تبقى كما هي في الكود السابق ---
 
 def load_last_id():
     if os.path.exists(LAST_ID_FILE):
@@ -120,6 +144,8 @@ def main():
     
     if not new_candidates:
         print("✨ لا توجد مقاطع جديدة.")
+        # حتى لو لا توجد مقاطع جديدة، قد نحتاج لتنظيف المجلد إذا تغيرت MAX_ITEMS
+        update_rss_file([]) 
         return
 
     new_candidates.reverse()
@@ -137,7 +163,7 @@ def main():
     if downloaded_info:
         update_rss_file(downloaded_info)
         save_last_id(final_id)
-        print(f"✅ تم إنهاء الدفعة بنجاح. آخر معرف: {final_id}")
+        print(f"✅ تم المزامنة والتنظيف بنجاح.")
 
 if __name__ == "__main__":
     main()

@@ -3,7 +3,13 @@
   <channel>
     <title>My YouTube Shorts Feed</title>
     <link>https://github.com/uploadtiktok/DowShorts</link>
-    <description>Latest downloaded shorts</description>
+    <item>
+      <title>ما حكم سماع تسجيلات قرآنية تحتوي أخطاء</title>
+      <link>https://raw.githubusercontent.com/uploadtiktok/DowShorts/main/shorts/ما حكم سماع تسجيلات قرآنية تحتوي أخطاء.mp4</link>
+      <pubDate>Mon, 30 Mar 2026 20:05:54 +0000</pubDate>
+      <enclosure url="https://raw.githubusercontent.com/uploadtiktok/DowShorts/main/shorts/ما حكم سماع تسجيلات قرآنية تحتوي أخطاء.mp4" type="video/mp4"/>
+      <guid isPermaLink="false">https://raw.githubusercontent.com/uploadtiktok/DowShorts/main/shorts/ما حكم سماع تسجيلات قرآنية تحتوي أخطاء.mp4</guid>
+    </item>
     <item>
       <title>كم مقدار الزكاة الواجبة في جرام ذهب</title>
       <link>https://raw.githubusercontent.com/uploadtiktok/DowShorts/main/shorts/كم مقدار الزكاة الواجبة في جرام ذهب.mp4</link>
@@ -17,13 +23,6 @@
       <pubDate>Mon, 30 Mar 2026 16:39:05 +0000</pubDate>
       <enclosure url="https://raw.githubusercontent.com/uploadtiktok/DowShorts/main/shorts/هل يجوز قراءة كتب التفسير بدون وضوء.mp4" type="video/mp4"/>
       <guid isPermaLink="false">https://raw.githubusercontent.com/uploadtiktok/DowShorts/main/shorts/هل يجوز قراءة كتب التفسير بدون وضوء.mp4</guid>
-    </item>
-    <item>
-      <title>ما هو النرد المحرم في الحديث النبوي</title>
-      <link>https://raw.githubusercontent.com/uploadtiktok/DowShorts/main/shorts/ما هو النرد المحرم في الحديث النبوي.mp4</link>
-      <pubDate>Mon, 30 Mar 2026 16:39:05 +0000</pubDate>
-      <enclosure url="https://raw.githubusercontent.com/uploadtiktok/DowShorts/main/shorts/ما هو النرد المحرم في الحديث النبوي.mp4" type="video/mp4"/>
-      <guid isPermaLink="false">https://raw.githubusercontent.com/uploadtiktok/DowShorts/main/shorts/ما هو النرد المحرم في الحديث النبوي.mp4</guid>
     </item>
   </channel>
 </rss>

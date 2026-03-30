@@ -1,42 +1,46 @@
-name: Quick HQ Download
+name: YouTube HQ Downloader
 
 on:
   workflow_dispatch:
 
 jobs:
-  download:
+  build:
     runs-on: ubuntu-latest
     permissions:
       contents: write
 
     steps:
-      - name: Checkout Repository
+      - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Install Node
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 18
 
-      - name: Install FFmpeg
-        # تثبيت مباشر بدون تحديث المستودعات
-        run: sudo apt-get install -y ffmpeg
-
-      - name: Install yt-dlp
-        run: pip install yt-dlp
+      - name: Install Tools
+        run: |
+          sudo apt-get install -y ffmpeg
+          pip install yt-dlp
 
       - name: Create Cookies File
         run: echo "${{ secrets.YT_COOKIES }}" > cookies.txt
 
-      - name: Run Download
+      - name: Run Python Script
         run: python download_short.py
 
-      - name: Push to Repo
+      - name: Clean Temporary Files
+        if: always()
+        run: rm -f cookies.txt
+
+      - name: Upload to Repository
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           if [ -d "shorts" ] && [ "$(ls -A shorts)" ]; then
             git add shorts/
-            git commit -m "Add video"
+            git commit -m "Download new short: $(date)"
             git push
+          else
+            echo "No files to upload."
           fi

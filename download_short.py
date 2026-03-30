@@ -9,21 +9,22 @@ def download_video(url):
     command = [
         "yt-dlp",
         "--cookies", "cookies.txt",
-        "--js-runtime", "node", # إخبار البرنامج باستخدام نود لحل التحدي
-        "-f", "bestvideo+bestaudio/best", # جلب أعلى دقة فيديو وصوت
-        "--merge-output-format", "mp4",
+        "--js-runtime", "node",
+        "--remote-components", "ejs:github", # ضروري لفك تشفير الجودات العالية
+        "-f", "bestvideo+bestaudio/best",    # أعلى دقة متاحة
+        "--merge-output-format", "mp4",      # دمج في mp4
         "-o", f"{output_dir}/%(title)s.%(ext)s",
         url
     ]
 
     try:
-        print(f"جاري جلب أعلى دقة متاحة باستخدام الكوكيز...")
+        print("جاري التحميل بأعلى دقة...")
         subprocess.run(command, check=True)
-        print("تم التحميل بنجاح!")
+        print("تمت العملية بنجاح.")
     except subprocess.CalledProcessError:
-        print("فشل التحميل. تأكد من تحديث الكوكيز في GitHub Secrets.")
+        print("فشل التحميل. تأكد من صحة الكوكيز.")
         exit(1)
 
 if __name__ == "__main__":
-    video_url = "https://youtube.com/shorts/evdWG0GRlfs?si=DmZ9aa5O6CMURlry"
-    download_video(video_url)
+    url = "https://youtube.com/shorts/evdWG0GRlfs?si=DmZ9aa5O6CMURlry"
+    download_video(url)

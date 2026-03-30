@@ -1,12 +1,12 @@
-name: Auto YouTube Shorts Sync
+name: Auto YouTube Shorts & RSS Sync
 
 on:
-  workflow_dispatch: # تشغيل يدوي من تبويب Actions
+  workflow_dispatch: # للتشغيل اليدوي من تبويب Actions
   schedule:
-    - cron: '0 */6 * * *' # تشغيل تلقائي كل 6 ساعات لفحص المقاطع الجديدة
+    - cron: '0 */6 * * *' # تشغيل تلقائي كل 6 ساعات لفحص الجديد
 
 jobs:
-  sync_shorts:
+  sync_process:
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -15,7 +15,7 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 1 # جلب أحدث نسخة فقط لتوفير الوقت
+          fetch-depth: 1
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -23,7 +23,6 @@ jobs:
           node-version: 18
 
       - name: Install FFmpeg
-        # ضروري لدمج جودة 1080p (فيديو + صوت)
         run: sudo apt-get install -y ffmpeg
 
       - name: Install Python Dependencies
@@ -31,11 +30,11 @@ jobs:
           pip install yt-dlp requests
 
       - name: Create Cookies File
-        # تأكد من وضع الكوكيز في إعدادات المستودع (Settings > Secrets) باسم YT_COOKIES
+        # تأكد من إضافة الكوكيز في Secrets المستودع باسم YT_COOKIES
         run: echo "${{ secrets.YT_COOKIES }}" > cookies.txt
 
-      - name: Run Sync Script
-        # سيقوم السكريبت بفحص RSS وتحميل الجديد فقط وتحديث last_processed_id.json
+      - name: Run Main Script
+        # سيقوم بمعالجة 3 مقاطع وتحديث rss.xml و last_processed_id.json
         run: python main.py
 
       - name: Cleanup Sensitive Data
@@ -47,13 +46,13 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           
-          # إضافة المجلد وملف التتبع الفردي (آخر ID فقط)
-          git add shorts/ last_processed_id.json
+          # إضافة المجلد، ملف التتبع، وملف الـ RSS الجديد
+          git add shorts/ last_processed_id.json rss.xml
           
-          # التحقق من وجود تغييرات (فيديوهات جديدة أو تحديث الـ ID)
+          # التحقق من وجود تغييرات قبل الإرسال
           if git diff --staged --quiet; then
-            echo "لا توجد فيديوهات جديدة أو تغييرات للمزامنة حالياً."
+            echo "لا توجد تحديثات جديدة حالياً."
           else
-            git commit -m "Sync new shorts and update latest processed ID"
+            git commit -m "Sync: 3 new shorts, update RSS and tracking ID"
             git push
           fi

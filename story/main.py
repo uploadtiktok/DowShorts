@@ -75,7 +75,7 @@ def get_video_details(video_id):
         return None
 
 def get_all_channel_videos(max_results=150):
-    """جلب الفيديوهات من القناة مع الترحيل"""
+    """جلب الفيديوهات من القناة مع الترحيل (مرتبة من الأحدث إلى الأقدم)"""
     try:
         youtube = build('youtube', 'v3', developerKey=YOUTUBE_API_KEY)
         all_videos = []
@@ -106,46 +106,31 @@ def get_all_channel_videos(max_results=150):
         print(f"🔴 خطأ في جلب الفيديوهات: {e}")
         return []
 
-def find_older_videos_after_id(all_videos, last_id):
+def find_next_video_after_id(all_videos, last_id):
     """
-    إرجاع الفيديوهات الأقدم من last_id (التي تليه في التسلسل الزمني)
+    إرجاع الفيديو التالي مباشرة بعد الـ ID المحدد (بالترتيب التسلسلي)
     all_videos مرتبة من الأحدث إلى الأقدم
     """
     for i, video in enumerate(all_videos):
         if video['id'] == last_id:
-            # الفيديوهات الأقدم (التي بعد الـ ID في الترتيب)
-            older_videos = all_videos[i+1:]
-            print(f"✅ تم العثور على الـ ID {last_id} في الموقع {i+1}")
-            print(f"📊 عدد الفيديوهات الأقدم (التي تليه): {len(older_videos)}")
-            if older_videos:
-                print(f"🕒 أقدم فيديو بعد الـ ID: {older_videos[0]['published_at']}")
-            return older_videos
+            # الفيديو التالي في الترتيب (الأقدم منه مباشرة)
+            if i + 1 < len(all_videos):
+                next_video = all_videos[i + 1]
+                print(f"✅ تم العثور على الـ ID {last_id}")
+                print(f"📹 الفيديو التالي مباشرة: {next_video['title'][:50]}...")
+                print(f"🕒 تاريخه: {next_video['published_at']}")
+                return [next_video]
+            else:
+                print(f"⚠️ لا يوجد فيديو بعد {last_id} (هذا آخر فيديو في القائمة)")
+                return []
     
-    print(f"⚠️ الـ ID {last_id} غير موجود في آخر {len(all_videos)} فيديو")
-    print(f"🔄 سيتم البدء من أقدم فيديو متاح")
-    # إذا لم نجد الـ ID، نبدأ من أقدم فيديو (نهاية القائمة)
-    return list(reversed(all_videos))
-
-def find_first_suitable_video(videos):
-    """أول فيديو مدته أقل من 60 ثانية"""
-    for video in videos:
-        print(f"\n📹 فحص: {video['title'][:50]}... | {video['published_at']}")
-        details = get_video_details(video['id'])
-        if not details:
-            continue
-        print(f"   ⏱️  المدة: {details['duration']} ثانية")
-        if details['duration'] < 60:
-            print("   ✅ مناسب")
-            return {
-                'id': video['id'],
-                'title': video['title'],
-                'link': video['link'],
-                'duration': details['duration'],
-                'published_at': video['published_at']
-            }
-        else:
-            print("   ⏭️  تخطي (>59 ثانية)")
-    return None
+    print(f"⚠️ الـ ID {last_id} غير موجود، سيتم البدء من أقدم فيديو")
+    # إذا لم نجد الـ ID، نبدأ من أقدم فيديو (آخر عنصر في القائمة)
+    if all_videos:
+        oldest_video = all_videos[-1]
+        print(f"📹 البدء من أقدم فيديو: {oldest_video['title'][:50]}...")
+        return [oldest_video]
+    return []
 
 def download_video(url, title):
     """تحميل فيديو باستخدام yt-dlp"""
@@ -253,7 +238,7 @@ def load_last_processed_id():
 
 async def main():
     print("=" * 60)
-    print("🚀 بدء تشغيل السكربت - فيديو Shorts واحد فقط (من الأقدم للأحدث)")
+    print("🚀 بدء تشغيل السكربت - معالجة فيديو واحد بالترتيب التسلسلي")
     print("=" * 60)
     
     # قراءة آخر ID
@@ -274,32 +259,47 @@ async def main():
     
     print(f"📊 تم جلب {len(all_videos)} فيديو (من الأحدث إلى الأقدم)")
     
-    # الفيديوهات الأقدم من الـ ID (التي تليه)
+    # الحصول على الفيديو التالي مباشرة
     if last_id:
-        candidates = find_older_videos_after_id(all_videos, last_id)
+        candidates = find_next_video_after_id(all_videos, last_id)
     else:
         # إذا لم يكن هناك ID، نبدأ من أقدم فيديو
-        candidates = list(reversed(all_videos))
-        print(f"📊 لا يوجد ID محفوظ، سيتم البدء من أقدم {len(candidates)} فيديو")
+        if all_videos:
+            candidates = [all_videos[-1]]
+            print(f"📊 البدء من أقدم فيديو")
     
     if not candidates:
-        print("✨ لا يوجد فيديوهات أقدم للمعالجة")
-        send_telegram_msg("✨ لا يوجد فيديوهات جديدة للمعالجة")
+        print("✨ لا يوجد فيديو تالٍ للمعالجة")
+        send_telegram_msg("✨ لا يوجد فيديو جديد للمعالجة")
         return
     
-    # البحث عن أول فيديو مناسب
-    print(f"\n🔎 البحث عن أول فيديو مناسب (أقل من 60 ثانية) من {len(candidates)} فيديو...")
-    video = find_first_suitable_video(candidates)
+    # الفيديو المرشح (واحد فقط)
+    video = candidates[0]
     
-    if not video:
-        print("❌ لم يتم العثور على فيديو مناسب")
-        send_telegram_msg("⚠️ لا يوجد فيديو Shorts مناسب (أقل من 60 ثانية)")
+    # التحقق من المدة
+    print(f"\n📹 فحص الفيديو: {video['title'][:50]}... | {video['published_at']}")
+    details = get_video_details(video['id'])
+    
+    if not details:
+        print("❌ لا يمكن جلب تفاصيل الفيديو")
+        return
+    
+    print(f"   ⏱️  المدة: {details['duration']} ثانية")
+    
+    # إذا كان الفيديو أطول من 59 ثانية، يتم تخطيه وحفظ ID الخاص به
+    if details['duration'] >= 60:
+        print(f"   ❌ الفيديو مدته {details['duration']} ثانية (يتجاوز 59 ثانية)")
+        print(f"   ⚠️ سيتم تخطيه وحفظ ID الخاص به لتجنب التكرار")
+        # حفظ ID هذا الفيديو حتى لا نتعامل معه مرة أخرى
+        save_last_processed_id(video['id'])
+        send_telegram_msg(f"⚠️ تم تخطي فيديو:\n{video['title'][:50]}\nالسبب: المدة {details['duration']} ثانية (>59)")
+        print("💾 تم حفظ ID الفيديو المتخطي، سيتم معالجة التالي في التشغيل القادم")
         return
     
     print("\n" + "=" * 60)
     print(f"🎬 الفيديو المختار:")
     print(f"   العنوان: {video['title']}")
-    print(f"   المدة: {video['duration']} ثانية")
+    print(f"   المدة: {details['duration']} ثانية")
     print(f"   النشر: {video['published_at']}")
     print("=" * 60)
     

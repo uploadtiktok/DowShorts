@@ -2,7 +2,9 @@ import os
 import subprocess
 import asyncio
 import re
+import json
 from pathlib import Path
+from datetime import datetime, timedelta
 from googleapiclient.discovery import build
 from telethon import TelegramClient, functions, types
 from telethon.sessions import StringSession
@@ -13,7 +15,7 @@ CURRENT_DIR = Path(__file__).parent.absolute()
 ROOT_DIR = CURRENT_DIR.parent
 
 VIDEO_FOLDER = CURRENT_DIR / "shorts"
-LAST_ID_FILE = CURRENT_DIR / "last_story.txt"
+LAST_VIDEO_FILE = CURRENT_DIR / "last_video.json"
 COOKIES_FILE = ROOT_DIR / "cookies.txt"
 
 # YouTube API Settings
@@ -53,84 +55,138 @@ def parse_duration(duration):
     seconds = int(match.group(3) or 0)
     return hours * 3600 + minutes * 60 + seconds
 
-def get_video_details(video_id):
-    """جلب تفاصيل الفيديو (المدة، العنوان، التاريخ)"""
+def get_video_info(video_id):
+    """جلب معلومات الفيديو (العنوان، التاريخ، المدة)"""
     try:
         youtube = build('youtube', 'v3', developerKey=YOUTUBE_API_KEY)
-        video_request = youtube.videos().list(
-            part='contentDetails,snippet',
-            id=video_id
+        request = youtube.videos().list(part='snippet,contentDetails', id=video_id)
+        response = request.execute()
+        if not response.get('items'):
+            return None
+        video = response['items'][0]
+        return {
+            'id': video_id,
+            'title': video['snippet']['title'],
+            'published_at': video['snippet']['publishedAt'],
+            'duration': parse_duration(video['contentDetails']['duration'])
+        }
+    except Exception as e:
+        print(f"⚠️ خطأ في جلب معلومات الفيديو: {e}")
+        return None
+
+def get_videos_after(youtube, after_time, max_results=100):
+    """جلب الفيديوهات التي نشرت بعد وقت معين (نفس اليوم)"""
+    all_videos = []
+    next_token = None
+    target_date = after_time[:10]
+    
+    while len(all_videos) < max_results:
+        request = youtube.search().list(
+            part='snippet',
+            channelId=CHANNEL_ID,
+            maxResults=min(50, max_results - len(all_videos)),
+            order='date',
+            type='video',
+            publishedAfter=after_time,
+            pageToken=next_token
         )
-        video_response = video_request.execute()
-        if video_response.get('items'):
-            item = video_response['items'][0]
-            return {
-                'duration': parse_duration(item['contentDetails']['duration']),
+        response = request.execute()
+        
+        for item in response.get('items', []):
+            vid = item['id']['videoId']
+            pub = item['snippet']['publishedAt']
+            # فقط الفيديوهات في نفس اليوم
+            if pub[:10] == target_date:
+                all_videos.append({
+                    'id': vid,
+                    'title': item['snippet']['title'],
+                    'published_at': pub
+                })
+        
+        next_token = response.get('nextPageToken')
+        if not next_token:
+            break
+    
+    return all_videos
+
+def get_videos_from_date(youtube, start_date, max_results=100):
+    """جلب الفيديوهات من تاريخ محدد فصاعداً"""
+    all_videos = []
+    next_token = None
+    
+    while len(all_videos) < max_results:
+        request = youtube.search().list(
+            part='snippet',
+            channelId=CHANNEL_ID,
+            maxResults=min(50, max_results - len(all_videos)),
+            order='date',
+            type='video',
+            publishedAfter=start_date,
+            pageToken=next_token
+        )
+        response = request.execute()
+        
+        for item in response.get('items', []):
+            all_videos.append({
+                'id': item['id']['videoId'],
                 'title': item['snippet']['title'],
                 'published_at': item['snippet']['publishedAt']
-            }
-        return None
-    except Exception as e:
-        print(f"⚠️ خطأ في جلب التفاصيل: {e}")
-        return None
-
-def get_all_channel_videos(max_results=150):
-    """جلب الفيديوهات من القناة مع الترحيل (مرتبة من الأحدث إلى الأقدم)"""
-    try:
-        youtube = build('youtube', 'v3', developerKey=YOUTUBE_API_KEY)
-        all_videos = []
-        next_page_token = None
-
-        while len(all_videos) < max_results:
-            request = youtube.search().list(
-                part='snippet',
-                channelId=CHANNEL_ID,
-                maxResults=min(50, max_results - len(all_videos)),
-                order='date',
-                type='video',
-                pageToken=next_page_token
-            )
-            response = request.execute()
-            for item in response.get('items', []):
-                all_videos.append({
-                    'id': item['id']['videoId'],
-                    'title': item['snippet']['title'],
-                    'published_at': item['snippet']['publishedAt'],
-                    'link': f"https://www.youtube.com/shorts/{item['id']['videoId']}"
-                })
-            next_page_token = response.get('nextPageToken')
-            if not next_page_token:
-                break
-        return all_videos
-    except Exception as e:
-        print(f"🔴 خطأ في جلب الفيديوهات: {e}")
-        return []
-
-def find_next_video_after_id(all_videos, last_id):
-    """
-    إرجاع الفيديو التالي مباشرة بعد الـ ID المحدد (بالترتيب التسلسلي)
-    all_videos مرتبة من الأحدث إلى الأقدم
-    """
-    for i, video in enumerate(all_videos):
-        if video['id'] == last_id:
-            # الفيديو التالي في الترتيب (الأقدم منه مباشرة)
-            if i + 1 < len(all_videos):
-                next_video = all_videos[i + 1]
-                print(f"✅ تم العثور على الـ ID {last_id}")
-                print(f"📹 الفيديو التالي مباشرة: {next_video['title'][:50]}...")
-                print(f"🕒 تاريخه: {next_video['published_at']}")
-                return [next_video]
-            else:
-                print(f"⚠️ لا يوجد فيديو بعد {last_id} (هذا آخر فيديو في القائمة)")
-                return []
+            })
+        
+        next_token = response.get('nextPageToken')
+        if not next_token:
+            break
     
-    print(f"⚠️ الـ ID {last_id} غير موجود، سيتم البدء من أقدم فيديو")
-    # إذا لم نجد الـ ID، نبدأ من أقدم فيديو (آخر عنصر في القائمة)
-    if all_videos:
-        oldest_video = all_videos[-1]
-        print(f"📹 البدء من أقدم فيديو: {oldest_video['title'][:50]}...")
-        return [oldest_video]
-    return []
+    return all_videos
+
+def find_next_video(last_video):
+    """البحث عن الفيديو التالي بعد الـ ID المحدد"""
+    youtube = build('youtube', 'v3', developerKey=YOUTUBE_API_KEY)
+    
+    print(f"\n📌 آخر فيديو معالج:")
+    print(f"   ID: {last_video['id']}")
+    print(f"   التاريخ: {last_video['published_at']}")
+    print(f"   المدة: {last_video['duration']} ثانية")
+    
+    # الخطوة 1: البحث في نفس اليوم بعد الـ ID
+    print(f"\n🔍 البحث في نفس اليوم بعد {last_video['published_at']}")
+    same_day_videos = get_videos_after(youtube, last_video['published_at'])
+    
+    if same_day_videos:
+        print(f"📊 تم العثور على {len(same_day_videos)} فيديو في نفس اليوم")
+        for v in same_day_videos:
+            info = get_video_info(v['id'])
+            if info and info['duration'] < 60:
+                print(f"\n✅ تم العثور على فيديو مناسب (نفس اليوم)")
+                return info
+            elif info:
+                print(f"   ⏭️  تخطي: {v['title'][:40]}... ({info['duration']} ثانية)")
+    else:
+        print("   لا يوجد فيديوهات في نفس اليوم بعد الـ ID")
+    
+    # الخطوة 2: الانتقال إلى اليوم التالي
+    dt = datetime.fromisoformat(last_video['published_at'].replace('Z', '+00:00'))
+    next_day = (dt + timedelta(days=1)).strftime('%Y-%m-%dT00:00:00Z')
+    
+    print(f"\n🔍 البحث من تاريخ {next_day}")
+    next_videos = get_videos_from_date(youtube, next_day)
+    
+    if not next_videos:
+        print("   لا يوجد فيديوهات في الأيام التالية")
+        return None
+    
+    print(f"📊 تم العثور على {len(next_videos)} فيديو في الأيام التالية")
+    
+    for v in next_videos:
+        info = get_video_info(v['id'])
+        if info and info['duration'] < 60:
+            print(f"\n✅ تم العثور على فيديو مناسب (يوم لاحق)")
+            return info
+        elif info:
+            print(f"   ⏭️  تخطي: {v['title'][:40]}... ({info['duration']} ثانية)")
+    
+    print("   ❌ لم يتم العثور على أي فيديو مناسب")
+    return None
 
 def download_video(url, title):
     """تحميل فيديو باستخدام yt-dlp"""
@@ -142,7 +198,6 @@ def download_video(url, title):
     
     cookies_path = COOKIES_FILE if COOKIES_FILE.exists() else None
     
-    # نفس الأمر الناجح من الكود الأصلي
     command = [
         "yt-dlp",
         "--js-runtime", "node",
@@ -220,18 +275,24 @@ def cleanup_video(video_path):
     except Exception as e:
         print(f"⚠️ فشل الحذف: {e}")
 
-def save_last_processed_id(video_id):
-    """حفظ ID آخر فيديو تم معالجته"""
-    with open(LAST_ID_FILE, 'w') as f:
-        f.write(video_id)
-    print(f"💾 تم حفظ ID: {video_id}")
+def save_last_video(video_info):
+    """حفظ معلومات آخر فيديو تم معالجته"""
+    data = {
+        'id': video_info['id'],
+        'title': video_info['title'],
+        'published_at': video_info['published_at'],
+        'duration': video_info['duration']
+    }
+    with open(LAST_VIDEO_FILE, 'w', encoding='utf-8') as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+    print(f"💾 تم حفظ معلومات آخر فيديو في {LAST_VIDEO_FILE}")
 
-def load_last_processed_id():
-    """تحميل آخر ID تم معالجته"""
-    if LAST_ID_FILE.exists():
+def load_last_video():
+    """تحميل معلومات آخر فيديو تم معالجته"""
+    if LAST_VIDEO_FILE.exists():
         try:
-            with open(LAST_ID_FILE, 'r') as f:
-                return f.read().strip()
+            with open(LAST_VIDEO_FILE, 'r', encoding='utf-8') as f:
+                return json.load(f)
         except:
             pass
     return None
@@ -241,87 +302,62 @@ async def main():
     print("🚀 بدء تشغيل السكربت - معالجة فيديو واحد بالترتيب التسلسلي")
     print("=" * 60)
     
-    # قراءة آخر ID
-    last_id = load_last_processed_id()
-    if last_id:
-        print(f"📌 آخر فيديو معالج: {last_id}")
-    else:
-        print("⚠️ لا يوجد ID محفوظ، البدء من أقدم فيديو")
+    # تحميل معلومات آخر فيديو معالج
+    last_video = load_last_video()
     
-    # جلب الفيديوهات
-    print("\n🔍 جلب فيديوهات القناة...")
-    all_videos = get_all_channel_videos(max_results=150)
-    
-    if not all_videos:
-        print("❌ لا يوجد فيديوهات")
-        send_telegram_msg("❌ لا يوجد فيديوهات في القناة")
+    if not last_video:
+        print("⚠️ لا يوجد فيديو محفوظ، يرجى تحديد أول فيديو يدوياً")
+        print("📝 قم بإنشاء ملف last_video.json بالمحتوى:")
+        print('''
+{
+  "id": "معرف_الفيديو",
+  "title": "عنوان الفيديو",
+  "published_at": "2026-01-01T00:00:00Z",
+  "duration": 0
+}
+''')
+        send_telegram_msg("⚠️ لا يوجد فيديو محفوظ، يرجى تحديد أول فيديو")
         return
     
-    print(f"📊 تم جلب {len(all_videos)} فيديو (من الأحدث إلى الأقدم)")
+    # البحث عن الفيديو التالي
+    print("\n🔍 البحث عن الفيديو التالي...")
+    next_video = find_next_video(last_video)
     
-    # الحصول على الفيديو التالي مباشرة
-    if last_id:
-        candidates = find_next_video_after_id(all_videos, last_id)
-    else:
-        # إذا لم يكن هناك ID، نبدأ من أقدم فيديو
-        if all_videos:
-            candidates = [all_videos[-1]]
-            print(f"📊 البدء من أقدم فيديو")
-    
-    if not candidates:
+    if not next_video:
         print("✨ لا يوجد فيديو تالٍ للمعالجة")
         send_telegram_msg("✨ لا يوجد فيديو جديد للمعالجة")
         return
     
-    # الفيديو المرشح (واحد فقط)
-    video = candidates[0]
-    
-    # التحقق من المدة
-    print(f"\n📹 فحص الفيديو: {video['title'][:50]}... | {video['published_at']}")
-    details = get_video_details(video['id'])
-    
-    if not details:
-        print("❌ لا يمكن جلب تفاصيل الفيديو")
-        return
-    
-    print(f"   ⏱️  المدة: {details['duration']} ثانية")
-    
-    # إذا كان الفيديو أطول من 59 ثانية، يتم تخطيه وحفظ ID الخاص به
-    if details['duration'] >= 60:
-        print(f"   ❌ الفيديو مدته {details['duration']} ثانية (يتجاوز 59 ثانية)")
-        print(f"   ⚠️ سيتم تخطيه وحفظ ID الخاص به لتجنب التكرار")
-        # حفظ ID هذا الفيديو حتى لا نتعامل معه مرة أخرى
-        save_last_processed_id(video['id'])
-        send_telegram_msg(f"⚠️ تم تخطي فيديو:\n{video['title'][:50]}\nالسبب: المدة {details['duration']} ثانية (>59)")
-        print("💾 تم حفظ ID الفيديو المتخطي، سيتم معالجة التالي في التشغيل القادم")
-        return
-    
     print("\n" + "=" * 60)
-    print(f"🎬 الفيديو المختار:")
-    print(f"   العنوان: {video['title']}")
-    print(f"   المدة: {details['duration']} ثانية")
-    print(f"   النشر: {video['published_at']}")
+    print(f"🎬 الفيديو التالي:")
+    print(f"   ID: {next_video['id']}")
+    print(f"   العنوان: {next_video['title']}")
+    print(f"   المدة: {next_video['duration']} ثانية")
+    print(f"   التاريخ: {next_video['published_at']}")
+    print(f"   الرابط: https://youtube.com/shorts/{next_video['id']}")
     print("=" * 60)
     
-    send_telegram_msg(f"📥 جاري تحميل: {video['title'][:50]}...")
+    send_telegram_msg(f"📥 جاري تحميل: {next_video['title'][:50]}...")
     
     # تحميل الفيديو
-    video_path = download_video(video['link'], video['title'])
+    video_url = f"https://youtube.com/shorts/{next_video['id']}"
+    video_path = download_video(video_url, next_video['title'])
+    
     if not video_path:
         print("❌ فشل التحميل")
         send_telegram_msg("❌ فشل تحميل الفيديو")
         return
     
     # رفع الستوري
-    success = await upload_to_story(video_path, video['title'])
+    success = await upload_to_story(video_path, next_video['title'])
     
     if success:
-        save_last_processed_id(video['id'])
+        save_last_video(next_video)
         cleanup_video(video_path)
         print("\n🎉 تم بنجاح!")
-        send_telegram_msg(f"✅ تم نشر الستوري:\n{video['title'][:100]}")
+        send_telegram_msg(f"✅ تم نشر الستوري:\n{next_video['title'][:100]}")
     else:
-        print("\n⚠️ فشل النشر، لم يتم حفظ ID")
+        print("\n⚠️ فشل النشر، لم يتم حفظ الفيديو")
 
 if __name__ == "__main__":
     asyncio.run(main())

@@ -7,11 +7,10 @@ from telethon.sessions import StringSession
 import asyncio
 from dotenv import load_dotenv
 import re
+from datetime import datetime
 
 # ========== CONFIGURATION ==========
-# تحديد مسار المجلد الحالي (story)
 CURRENT_DIR = Path(__file__).parent.absolute()
-# تحديد المسار الجذر (المجلد الرئيسي للمستودع)
 ROOT_DIR = CURRENT_DIR.parent
 
 VIDEO_FOLDER = CURRENT_DIR / "shorts"
@@ -43,7 +42,7 @@ def parse_duration(duration):
     return hours * 3600 + minutes * 60 + seconds
 
 def get_video_details(video_id):
-    """جلب تفاصيل الفيديو (المدة والعنوان) من YouTube API"""
+    """جلب تفاصيل الفيديو (المدة والعنوان والتاريخ) من YouTube API"""
     try:
         youtube = build('youtube', 'v3', developerKey=YOUTUBE_API_KEY)
         
@@ -58,10 +57,12 @@ def get_video_details(video_id):
             duration_iso = item['contentDetails']['duration']
             duration_seconds = parse_duration(duration_iso)
             title = item['snippet']['title']
+            published_at = item['snippet']['publishedAt']
             
             return {
                 'duration': duration_seconds,
-                'title': title
+                'title': title,
+                'published_at': published_at
             }
         
         return None
@@ -69,8 +70,8 @@ def get_video_details(video_id):
         print(f"⚠️ خطأ في جلب تفاصيل الفيديو: {e}")
         return None
 
-def get_next_videos_from_channel(last_video_id):
-    """الحصول على قائمة الفيديوهات التي تلي الـ ID المحدد"""
+def get_all_channel_videos(max_results=50):
+    """جلب جميع فيديوهات القناة مع التواريخ"""
     if not YOUTUBE_API_KEY:
         print("🔴 خطأ: YOUTUBE_API_KEY غير موجود")
         return []
@@ -78,33 +79,26 @@ def get_next_videos_from_channel(last_video_id):
     try:
         youtube = build('youtube', 'v3', developerKey=YOUTUBE_API_KEY)
         
-        # جلب أحدث الفيديوهات من القناة
+        # جلب الفيديوهات من القناة
         request = youtube.search().list(
             part='snippet',
             channelId=CHANNEL_ID,
-            maxResults=20,
+            maxResults=max_results,
             order='date',
             type='video'
         )
         response = request.execute()
         
         videos = []
-        found_last = False
-        
         for item in response.get('items', []):
             video_id = item['id']['videoId']
             title = item['snippet']['title']
+            published_at = item['snippet']['publishedAt']
             
-            # إذا لم نجد الـ ID بعد، نستمر بالبحث
-            if not found_last:
-                if video_id == last_video_id:
-                    found_last = True
-                continue
-            
-            # بعد العثور على الـ ID، نضيف الفيديوهات التالية
             videos.append({
                 'id': video_id,
                 'title': title,
+                'published_at': published_at,
                 'link': f"https://www.youtube.com/shorts/{video_id}"
             })
         
@@ -114,10 +108,37 @@ def get_next_videos_from_channel(last_video_id):
         print(f"🔴 خطأ في YouTube API: {e}")
         return []
 
+def find_videos_after_id(all_videos, last_id):
+    """البحث عن الفيديوهات التي تأتي بعد الـ ID المحدد"""
+    try:
+        # البحث عن موقع الـ ID في القائمة
+        last_index = -1
+        for i, video in enumerate(all_videos):
+            if video['id'] == last_id:
+                last_index = i
+                break
+        
+        if last_index == -1:
+            print(f"⚠️ لم يتم العثور على الـ ID {last_id} في القائمة")
+            print(f"📋 أول 5 فيديوهات في القائمة:")
+            for i, video in enumerate(all_videos[:5]):
+                print(f"   {i+1}. ID: {video['id']} - {video['title'][:50]}...")
+            
+            # إذا لم نجد الـ ID، نعتبر أن جميع الفيديوهات جديدة
+            return all_videos
+        
+        # إرجاع الفيديوهات التي بعد الـ ID
+        return all_videos[:last_index]  # لأن القائمة مرتبة من الأحدث للأقدم
+        
+    except Exception as e:
+        print(f"⚠️ خطأ في البحث عن الفيديوهات: {e}")
+        return []
+
 def find_first_suitable_video(videos):
-    """البحث عن أول فيديو مناسب (Shorts وأقل من 60 ثانية) من القائمة"""
+    """البحث عن أول فيديو مناسب (Shorts وأقل من 60 ثانية)"""
     for video in videos:
         print(f"\n📹 فحص الفيديو: {video['title'][:50]}...")
+        print(f"   🕒 تاريخ النشر: {video['published_at']}")
         
         # جلب تفاصيل الفيديو (المدة)
         details = get_video_details(video['id'])
@@ -138,7 +159,8 @@ def find_first_suitable_video(videos):
                 'id': video['id'],
                 'title': video['title'],
                 'link': video['link'],
-                'duration': details['duration']
+                'duration': details['duration'],
+                'published_at': video['published_at']
             }
         elif is_shorts and not is_short_duration:
             print(f"   ⏭️  تم التخطي: المدة {details['duration']} ثانية تتجاوز 59 ثانية")
@@ -260,13 +282,13 @@ def load_last_processed_id():
     return None
 
 async def main():
-    """الدالة الرئيسية - معالجة فيديو واحد فقط في كل مرة"""
+    """الدالة الرئيسية"""
     print("=" * 60)
     print("🚀 بدء تشغيل السكربت - البحث عن فيديو Shorts مناسب")
     print("📌 سيتم معالجة فيديو واحد فقط في هذا التشغيل")
     print("=" * 60)
     
-    # تحميل آخر ID تم معالجته
+    # تحميل آخر ID
     last_id = load_last_processed_id()
     
     if not last_id:
@@ -274,15 +296,31 @@ async def main():
     else:
         print(f"📌 آخر فيديو معالج: {last_id}")
     
-    # الحصول على الفيديوهات التي تلي الـ ID
-    print("\n🔍 جلب الفيديوهات الجديدة...")
-    next_videos = get_next_videos_from_channel(last_id)
+    # جلب جميع الفيديوهات
+    print("\n🔍 جلب فيديوهات القناة...")
+    all_videos = get_all_channel_videos(max_results=50)
+    
+    if not all_videos:
+        print("❌ لم يتم العثور على أي فيديوهات")
+        return
+    
+    print(f"📊 تم العثور على {len(all_videos)} فيديو")
+    
+    # البحث عن الفيديوهات التي تلي الـ ID
+    if last_id:
+        next_videos = find_videos_after_id(all_videos, last_id)
+        print(f"📊 عدد الفيديوهات الجديدة: {len(next_videos)}")
+        
+        if next_videos:
+            print(f"🕒 أحدث فيديو جديد: {next_videos[0]['published_at']}")
+            print(f"🎬 عنوانه: {next_videos[0]['title'][:50]}...")
+    else:
+        next_videos = all_videos
+        print(f"📊 عدد الفيديوهات الكلي: {len(next_videos)}")
     
     if not next_videos:
         print("✨ لا يوجد فيديوهات جديدة")
         return
-    
-    print(f"📊 تم العثور على {len(next_videos)} فيديو جديد")
     
     # البحث عن أول فيديو مناسب
     print("\n🔎 البحث عن أول فيديو Shorts بمدة أقل من 60 ثانية...")
@@ -296,6 +334,7 @@ async def main():
     print(f"🎬 تم العثور على فيديو مناسب:")
     print(f"   العنوان: {suitable_video['title']}")
     print(f"   المدة: {suitable_video['duration']} ثانية")
+    print(f"   تاريخ النشر: {suitable_video['published_at']}")
     print(f"   الرابط: {suitable_video['link']}")
     print("=" * 60)
     

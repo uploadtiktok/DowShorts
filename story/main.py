@@ -1,10 +1,8 @@
 import os
 import subprocess
-import json
 import asyncio
 import re
 from pathlib import Path
-from datetime import datetime
 from googleapiclient.discovery import build
 from telethon import TelegramClient, functions, types
 from telethon.sessions import StringSession
@@ -108,13 +106,25 @@ def get_all_channel_videos(max_results=150):
         print(f"🔴 خطأ في جلب الفيديوهات: {e}")
         return []
 
-def find_videos_after_id(all_videos, last_id):
-    """إرجاع الفيديوهات الأحدث من last_id"""
+def find_older_videos_after_id(all_videos, last_id):
+    """
+    إرجاع الفيديوهات الأقدم من last_id (التي تليه في التسلسل الزمني)
+    all_videos مرتبة من الأحدث إلى الأقدم
+    """
     for i, video in enumerate(all_videos):
         if video['id'] == last_id:
-            return all_videos[:i]
-    print(f"⚠️ الـ ID {last_id} غير موجود، سيتم التعامل مع الكل كجديد")
-    return all_videos
+            # الفيديوهات الأقدم (التي بعد الـ ID في الترتيب)
+            older_videos = all_videos[i+1:]
+            print(f"✅ تم العثور على الـ ID {last_id} في الموقع {i+1}")
+            print(f"📊 عدد الفيديوهات الأقدم (التي تليه): {len(older_videos)}")
+            if older_videos:
+                print(f"🕒 أقدم فيديو بعد الـ ID: {older_videos[0]['published_at']}")
+            return older_videos
+    
+    print(f"⚠️ الـ ID {last_id} غير موجود في آخر {len(all_videos)} فيديو")
+    print(f"🔄 سيتم البدء من أقدم فيديو متاح")
+    # إذا لم نجد الـ ID، نبدأ من أقدم فيديو (نهاية القائمة)
+    return list(reversed(all_videos))
 
 def find_first_suitable_video(videos):
     """أول فيديو مدته أقل من 60 ثانية"""
@@ -138,14 +148,13 @@ def find_first_suitable_video(videos):
     return None
 
 def download_video(url, title):
-    """تحميل فيديو باستخدام نفس الطريقة الناجحة من الكود الأصلي"""
+    """تحميل فيديو باستخدام yt-dlp"""
     VIDEO_FOLDER.mkdir(parents=True, exist_ok=True)
     
     safe_title = "".join(c for c in title if c.isalnum() or c in "._- ").strip()
     filename = f"{safe_title}.mp4"
     file_path = VIDEO_FOLDER / filename
     
-    # التحقق من وجود ملف الكوكيز
     cookies_path = COOKIES_FILE if COOKIES_FILE.exists() else None
     
     # نفس الأمر الناجح من الكود الأصلي
@@ -159,7 +168,6 @@ def download_video(url, title):
         url
     ]
     
-    # إضافة ملف الكوكيز إذا كان موجوداً
     if cookies_path:
         command.insert(1, "--cookies")
         command.insert(2, str(cookies_path))
@@ -172,10 +180,7 @@ def download_video(url, title):
             print(f"✅ تم التحميل: {filename}")
             return str(file_path)
         else:
-            error_msg = result.stderr.lower()
-            print(f"⚠️ فشل: {result.stderr[:300]}")
-            if "sign in" in error_msg or "cookie" in error_msg:
-                send_telegram_msg("🔴 الكوكيز متوقف - يرجى تحديث ملف cookies.txt")
+            print(f"⚠️ فشل التحميل: {result.stderr[:200]}")
             return None
             
     except subprocess.TimeoutExpired:
@@ -248,7 +253,7 @@ def load_last_processed_id():
 
 async def main():
     print("=" * 60)
-    print("🚀 بدء تشغيل السكربت - فيديو Shorts واحد فقط")
+    print("🚀 بدء تشغيل السكربت - فيديو Shorts واحد فقط (من الأقدم للأحدث)")
     print("=" * 60)
     
     # قراءة آخر ID
@@ -256,7 +261,7 @@ async def main():
     if last_id:
         print(f"📌 آخر فيديو معالج: {last_id}")
     else:
-        print("⚠️ لا يوجد ID محفوظ، البدء من الأول")
+        print("⚠️ لا يوجد ID محفوظ، البدء من أقدم فيديو")
     
     # جلب الفيديوهات
     print("\n🔍 جلب فيديوهات القناة...")
@@ -267,20 +272,23 @@ async def main():
         send_telegram_msg("❌ لا يوجد فيديوهات في القناة")
         return
     
-    print(f"📊 تم جلب {len(all_videos)} فيديو")
+    print(f"📊 تم جلب {len(all_videos)} فيديو (من الأحدث إلى الأقدم)")
     
-    # الفيديوهات الأحدث
+    # الفيديوهات الأقدم من الـ ID (التي تليه)
     if last_id:
-        candidates = find_videos_after_id(all_videos, last_id)
+        candidates = find_older_videos_after_id(all_videos, last_id)
     else:
-        candidates = all_videos
+        # إذا لم يكن هناك ID، نبدأ من أقدم فيديو
+        candidates = list(reversed(all_videos))
+        print(f"📊 لا يوجد ID محفوظ، سيتم البدء من أقدم {len(candidates)} فيديو")
     
     if not candidates:
-        print("✨ لا يوجد فيديوهات جديدة")
+        print("✨ لا يوجد فيديوهات أقدم للمعالجة")
+        send_telegram_msg("✨ لا يوجد فيديوهات جديدة للمعالجة")
         return
     
-    # البحث عن فيديو مناسب
-    print(f"\n🔎 البحث عن فيديو (<60 ثانية) من {len(candidates)} فيديو...")
+    # البحث عن أول فيديو مناسب
+    print(f"\n🔎 البحث عن أول فيديو مناسب (أقل من 60 ثانية) من {len(candidates)} فيديو...")
     video = find_first_suitable_video(candidates)
     
     if not video:

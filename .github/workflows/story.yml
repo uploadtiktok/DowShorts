@@ -18,7 +18,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 18
+          node-version: 20
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -29,21 +29,42 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y ffmpeg
+          # تثبيت npm globally
+          npm install -g npm@latest
           node --version
+          npm --version
+
+      - name: Install yt-dlp with all dependencies
+        run: |
+          python -m pip install --upgrade pip
+          # إلغاء تثبيت أي نسخة قديمة
+          pip uninstall yt-dlp -y || true
+          # تثبيت أحدث إصدار من yt-dlp مع دعم كامل
+          pip install --upgrade --no-cache-dir yt-dlp
+          # تثبيت حزمة الحل الإضافية
+          pip install pycryptodome
+          # التحقق من الإصدار
+          yt-dlp --version
 
       - name: Install Python packages
         run: |
-          python -m pip install --upgrade pip
-          pip install yt-dlp google-api-python-client telethon python-dotenv requests
+          pip install google-api-python-client telethon python-dotenv requests
 
       - name: Setup cookies file
         run: |
           echo "${{ secrets.YT_COOKIES }}" > cookies.txt
           if [ -f "cookies.txt" ]; then
             echo "✅ cookies.txt ready"
+            wc -l cookies.txt
           else
             echo "⚠️ Warning: cookies.txt not created"
           fi
+
+      - name: Test yt-dlp with cookies
+        run: |
+          # اختبار تحميل فيديو قصير للتأكد من الإعدادات
+          yt-dlp --version
+          yt-dlp --cookies cookies.txt --dump-json --skip-download https://www.youtube.com/shorts/u_E3v-sqwD4 2>&1 | head -n 20 || true
 
       - name: Run story script
         env:
